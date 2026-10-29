@@ -50,9 +50,8 @@ The stack in `docker-compose.yml`: PostgreSQL, Ollama (with a one-shot model pul
 ## Quick start
 
 ```bash
-git clone <your-repo-url>
-cd <repo>/infra
-
+git clone https://github.com/Safwen-amaira/Agentic-Job-Finder
+cd Agentic-Job-Finder/automatejobs/
 cp .env.example .env
 nano .env                       # fill in the values below
 cp /path/to/your_cv.pdf n8n-files/cv.pdf
