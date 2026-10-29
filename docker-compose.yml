@@ -1,0 +1,201 @@
+networks:
+  joby-network:
+    driver: bridge
+    internal: false
+
+volumes:
+  joby-postgres-data:
+    driver: local
+  joby-ollama-models:
+    driver: local
+  joby-n8n-data:
+    driver: local
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  joby-postgres:
+    image: postgres:16-alpine
+    container_name: joby-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-joby}
+      POSTGRES_USER: ${POSTGRES_USER:-joby}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - joby-postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - joby-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-joby} -d ${POSTGRES_DB:-joby}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # ── Ollama (Qwen LLM) ───────────────────────────────────────────────────────
+  joby-ollama:
+    image: ollama/ollama:latest
+    container_name: joby-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - joby-ollama-models:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    networks:
+      - joby-network
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 8g
+
+  # ── One-shot: pulls the model used by the job agents ────────────────────────
+  joby-ollama-init:
+    image: ollama/ollama:latest
+    container_name: joby-ollama-init
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://joby-ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+    entrypoint: ["/bin/sh", "-c", "ollama pull \"$$OLLAMA_MODEL\""]
+    depends_on:
+      joby-ollama:
+        condition: service_healthy
+    networks:
+      - joby-network
+
+  # ── n8n Workflow Orchestration (job agents auto-imported) ───────────────────
+  joby-n8n:
+    image: n8nio/n8n:latest
+    container_name: joby-n8n
+    restart: unless-stopped
+    init: true
+    entrypoint: ["/bin/sh", "/scripts/n8n-bootstrap.sh"]
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: joby-postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-joby}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-joby}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-joby}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      # Must be localhost so the Google OAuth redirect URI is accepted
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      N8N_EDITOR_BASE_URL: ${N8N_EDITOR_BASE_URL:-http://localhost:5678}
+      GENERIC_TIMEZONE: Africa/Tunis
+      TZ: Africa/Tunis
+      N8N_LOG_LEVEL: info
+      # Lets workflows read the settings below through $env
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      N8N_RESTRICT_FILE_ACCESS_TO: /home/node/.n8n-files
+      # Job agent settings (put them in .env next to this file)
+      OLLAMA_URL: http://joby-ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      JOB_SHEET_ID: ${JOB_SHEET_ID:-}
+      CANDIDATE_NAME: ${CANDIDATE_NAME:-YOUR FULL NAME}
+      CV_FILE_NAME: ${CV_FILE_NAME:-CV.pdf}
+      NOTIFY_EMAIL: ${NOTIFY_EMAIL:-}
+      JOOBLE_API_KEY: ${JOOBLE_API_KEY:-}
+      DRY_RUN: ${DRY_RUN:-true}
+      AUTO_ACTIVATE: ${AUTO_ACTIVATE:-false}
+      FORCE_IMPORT: ${FORCE_IMPORT:-false}
+    volumes:
+      - joby-n8n-data:/home/node/.n8n
+      - ./workflows:/workflows:ro
+      - ./scripts/n8n-bootstrap.sh:/scripts/n8n-bootstrap.sh:ro
+      - ./n8n-files:/home/node/.n8n-files
+    ports:
+      - "127.0.0.1:5678:5678"
+    depends_on:
+      joby-postgres:
+        condition: service_healthy
+      joby-ollama:
+        condition: service_healthy
+    networks:
+      - joby-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  joby-api:
+    build:
+      context: ../services/api
+      dockerfile: Dockerfile
+    container_name: joby-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-joby}:${POSTGRES_PASSWORD}@joby-postgres:5432/${POSTGRES_DB:-joby}
+      OLLAMA_HOST: http://joby-ollama:11434
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      joby-postgres:
+        condition: service_healthy
+      joby-ollama:
+        condition: service_healthy
+    networks:
+      - joby-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    volumes:
+      - ../services/api/app:/app/app:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # ── Background Worker ───────────────────────────────────────────────────────
+  joby-worker:
+    build:
+      context: ../services/worker
+      dockerfile: Dockerfile
+    container_name: joby-worker
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-joby}:${POSTGRES_PASSWORD}@joby-postgres:5432/${POSTGRES_DB:-joby}
+      OLLAMA_HOST: http://joby-ollama:11434
+      API_BASE_URL: http://joby-api:8000
+    depends_on:
+      joby-api:
+        condition: service_healthy
+      joby-postgres:
+        condition: service_healthy
+    networks:
+      - joby-network
+    deploy:
+      resources:
+        limits:
+          memory: 1g

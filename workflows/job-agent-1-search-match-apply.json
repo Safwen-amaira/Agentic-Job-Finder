@@ -1,0 +1,1271 @@
+{
+  "name": "Job Agent 1 - Search, Match, Apply",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "b82d21ba-6eec-40fa-ae50-4350cf0337fb",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Job Agent",
+        "formDescription": "Describe what you want in your own words: PFE, internship, CDI, CDD, freelance, remote, on-site, country, domain...",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "request",
+              "fieldType": "textarea",
+              "placeholder": "e.g. Remote CDI as SOC analyst in Europe, French or English",
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "4d045eb4-87a8-4250-8276-22c3328571de",
+      "name": "Search Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "e4c4ec39-5174-4ec4-9734-3020601b1376"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "86e77cf5-c749-4526-8823-3872c7a2733a",
+              "name": "request",
+              "value": "={{ $json.request || 'Looking for PFE / end-of-studies internships in cybersecurity (SOC, pentest, cloud security) in Tunisia or remote.' }}",
+              "type": "string"
+            },
+            {
+              "id": "3188751a-fafa-4998-a840-ef7e7e94daba",
+              "name": "ollamaUrl",
+              "value": "={{ $env.OLLAMA_URL || 'http://joby-ollama:11434' }}",
+              "type": "string"
+            },
+            {
+              "id": "98c1eff0-da60-4565-a404-66e6548cb9c2",
+              "name": "model",
+              "value": "={{ $env.OLLAMA_MODEL || 'qwen2.5:7b-instruct' }}",
+              "type": "string"
+            },
+            {
+              "id": "621b2524-5809-44c8-8b20-a18f213dbeed",
+              "name": "candidateName",
+              "value": "={{ $env.CANDIDATE_NAME || 'YOUR FULL NAME' }}",
+              "type": "string"
+            },
+            {
+              "id": "b283062d-098a-45c2-bb51-e35da88f3f5d",
+              "name": "cvFileName",
+              "value": "={{ $env.CV_FILE_NAME || 'CV.pdf' }}",
+              "type": "string"
+            },
+            {
+              "id": "c8e7a905-7751-45d3-8eed-7237bdd82da2",
+              "name": "joobleKey",
+              "value": "={{ $env.JOOBLE_API_KEY || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "daf12912-87c5-4a22-b88c-d96ecd5c6713",
+              "name": "minScore",
+              "value": 70,
+              "type": "number"
+            },
+            {
+              "id": "d91e2f77-7f54-4a3c-a3db-5f342c78ab21",
+              "name": "maxEvaluate",
+              "value": 25,
+              "type": "number"
+            },
+            {
+              "id": "72542564-cc13-407a-a7d9-29df13b2c579",
+              "name": "maxPerRun",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "bfce82ac-be4e-416f-9b9d-6265c39e934b",
+              "name": "dryRun",
+              "value": "={{ $env.DRY_RUN !== 'false' }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bad5ebd6-e034-4867-902e-1a010600362d",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        260,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "/home/node/.n8n-files/cv.pdf",
+        "options": {
+          "dataPropertyName": "cv"
+        }
+      },
+      "id": "9c7f7f0c-aa7d-4607-aa51-cb8b893ee2a1",
+      "name": "Read CV",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        500,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "cv",
+        "options": {}
+      },
+      "id": "08bca56b-f54b-4d78-8974-2a26292190f9",
+      "name": "CV Text",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        740,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst cv=$('CV Text').first().json.text||'';\nconst schema={type:'object',properties:{\n reasoning:{type:'string'},\n search_terms:{type:'array',items:{type:'string'}},\n contract_types:{type:'array',items:{type:'string'}},\n locations:{type:'array',items:{type:'string'}},\n remote_only:{type:'boolean'},\n languages:{type:'array',items:{type:'string'}},\n exclude_keywords:{type:'array',items:{type:'string'}}},\n required:['reasoning','search_terms','contract_types','locations','remote_only','languages','exclude_keywords']};\nconst system=`You are a job-search planner. Think step by step in \"reasoning\": what contract type does the user want (PFE, internship, CDI, CDD, freelance, apprenticeship), which locations or remote, which seniority, which languages, which domains. Use the CV only to pick relevant domain keywords. Then output 3 to 5 short search_terms (job titles or keywords, mix English and French when relevant, no more than 4 words each), contract_types, locations (cities or countries, empty if remote only), remote_only, languages, exclude_keywords (titles to avoid, e.g. senior, manager when the user wants a junior or internship role).`;\nconst user=`USER REQUEST:\\n${cfg.request}\\n\\nCANDIDATE CV:\\n${cv.slice(0,6000)}`;\nreturn [{json:{ollamaBody:{model:cfg.model,stream:false,format:schema,options:{temperature:0.2,num_ctx:8192},messages:[{role:'system',content:system},{role:'user',content:user}]}}}];"
+      },
+      "id": "8135f0a3-d33c-4fac-9b3c-2264f8df4ff1",
+      "name": "Plan Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ollamaBody) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "dab3c8c4-9400-4cc7-a8f8-59982cafd090",
+      "name": "Ollama: Plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1220,
+        100
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseLLM(r){let t=(r&&r.message&&r.message.content)||'';t=t.replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();try{return JSON.parse(t);}catch(e){const m=t.match(/\\{[\\s\\S]*\\}/);if(m){try{return JSON.parse(m[0]);}catch(e2){}}return null;}}\nconst cfg=$('Config').first().json;\nlet p=parseLLM($input.first().json);\nif(!p||!Array.isArray(p.search_terms)||!p.search_terms.length){p={reasoning:'fallback',search_terms:[String(cfg.request).slice(0,60)],contract_types:[],locations:[],remote_only:false,languages:[],exclude_keywords:[]};}\nreturn [{json:p}];"
+      },
+      "id": "82d2c51e-e690-4b55-a087-1a6f9bccb2c5",
+      "name": "Parse Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan=$('Parse Plan').first().json;\nreturn (plan.search_terms||[]).slice(0,4).map(t=>({json:{term:t,location:(plan.locations||[])[0]||'',remote_only:!!plan.remote_only}}));"
+      },
+      "id": "5ddc3a07-89c8-44a3-bec2-bce976450443",
+      "name": "Expand Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://remotive.com/api/remote-jobs?limit=25&search={{ encodeURIComponent($json.term) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "0b5be10b-d838-4eb3-b2b3-2597db1c7ebc",
+      "name": "Remotive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        -150
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://remoteok.com/api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 job-agent"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "f3e5ae0c-b026-477b-9d4c-41653bd3af89",
+      "name": "RemoteOK",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        50
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.arbeitnow.com/api/job-board-api",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "92ec8de4-7510-41ee-b115-79dba4df1f79",
+      "name": "Arbeitnow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        250
+      ],
+      "onError": "continueRegularOutput",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://jooble.org/api/{{ $('Config').first().json.joobleKey }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({keywords: $json.term, location: $json.location || ($json.remote_only ? '' : 'Tunisia')}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "09b5d2b2-7ef9-45ad-9b36-c46a41ac9527",
+      "name": "Jooble",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        450
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "id": "a87ae87c-72a6-4ecd-afcf-c52046d188cb",
+      "name": "Barrier",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2200,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan=$('Parse Plan').first().json;\nconst terms=(plan.search_terms||[]).map(s=>String(s).toLowerCase());\nconst tokens=[...new Set(terms.join(' ').split(/[^a-zà-ÿ0-9+#.]+/).filter(w=>w.length>3))];\nconst excl=(plan.exclude_keywords||[]).map(s=>String(s).toLowerCase()).filter(Boolean);\nconst strip=h=>String(h||'').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/\\s+/g,' ').trim();\nconst emailRe=/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g;\nconst get=n=>{try{return $(n).all().map(i=>i.json);}catch(e){return [];}};\nconst now=new Date().toISOString();\nconst seen=new Set();const jobs=[];\nconst push=(source,id,o)=>{\n  const url=String(o.url||'').split('?')[0];\n  const job_id=source+':'+(id||url);\n  if(!o.title||!url||seen.has(job_id))return;\n  const title=String(o.title);\n  if(excl.some(k=>title.toLowerCase().includes(k)))return;\n  const desc=strip(o.description).slice(0,3500);\n  const emails=(desc.match(emailRe)||[]).filter(e=>!/no-?reply|example\\.|sentry|wixpress/i.test(e));\n  seen.add(job_id);\n  jobs.push({json:{job_id,found_at:now,source,title,company:o.company||'',location:o.location||'',url:o.url,apply_email:emails[0]||'',description:desc}});\n};\nconst relevant=(title,tags)=>{const h=(title+' '+(tags||[]).join(' ')).toLowerCase();return !tokens.length||tokens.some(t=>h.includes(t));};\nfor(const r of get('Remotive'))for(const j of (r.jobs||[]))push('remotive',j.id,{title:j.title,company:j.company_name,location:j.candidate_required_location||'Remote',url:j.url,description:j.description});\nfor(const j of get('RemoteOK')){if(!j.position)continue;if(!relevant(j.position,j.tags))continue;push('remoteok',j.id,{title:j.position,company:j.company,location:j.location||'Remote',url:j.url||j.apply_url,description:j.description});}\nfor(const r of get('Arbeitnow'))for(const j of (r.data||[])){if(!relevant(j.title,j.tags))continue;push('arbeitnow',j.slug,{title:j.title,company:j.company_name,location:(j.location||'')+(j.remote?' (Remote)':''),url:j.url,description:j.description});}\nfor(const r of get('Jooble'))for(const j of (r.jobs||[]))push('jooble',j.id,{title:j.title,company:j.company,location:j.location,url:j.link,description:j.snippet});\nreturn jobs;"
+      },
+      "id": "e5244284-1b28-4bdf-b120-1ba756cd656f",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2440,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOB_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Applications"
+        },
+        "options": {}
+      },
+      "id": "b89dd507-f42d-4975-ab9f-963b5843fdea",
+      "name": "Read Applications Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2680,
+        150
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nlet rows=[];try{rows=$('Read Applications Sheet').all().map(i=>i.json);}catch(e){}\nconst seen=new Set(),seenCT=new Set();\nfor(const r of rows){if(!r.job_id)continue;if(['to_apply','error'].includes(r.status))continue;seen.add(r.job_id);seenCT.add(((r.company||'')+'|'+(r.title||'')).toLowerCase());}\nconst out=[],used=new Set();\nfor(const it of $('Normalize').all()){const j=it.json;const ct=((j.company||'')+'|'+(j.title||'')).toLowerCase();\n  if(seen.has(j.job_id)||seenCT.has(ct)||used.has(ct))continue;used.add(ct);out.push({json:j});if(out.length>=Number(cfg.maxEvaluate))break;}\nreturn out;"
+      },
+      "id": "545aac2d-0ae7-4d14-87f1-6a3bf3ffb13a",
+      "name": "Filter New",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2920,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst cv=$('CV Text').first().json.text||'';\nconst plan=$('Parse Plan').first().json;\nconst schema={type:'object',properties:{\n reasoning:{type:'string'},matched_skills:{type:'array',items:{type:'string'}},missing_skills:{type:'array',items:{type:'string'}},\n contract_fit:{type:'boolean'},location_fit:{type:'boolean'},score:{type:'integer'},verdict:{type:'string',enum:['apply','skip']},apply_angle:{type:'string'}},\n required:['reasoning','matched_skills','missing_skills','contract_fit','location_fit','score','verdict','apply_angle']};\nconst system=`You are a rigorous technical recruiter judging the fit between ONE candidate and ONE job. Use ONLY facts written in the CV. Never assume or infer skills that are not written there.\nWork step by step inside \"reasoning\": (1) list the job's hard requirements, (2) for each one give the CV evidence or write MISSING, (3) check contract type, location and language against the user's request, (4) conclude.\nScore 0-100: 85+ strong match, 70-84 good, 50-69 partial, below 50 poor. A missing hard requirement caps the score at 69. verdict is \"apply\" only if score >= ${cfg.minScore} and contract_fit and location_fit are true, otherwise \"skip\". apply_angle: one sentence on the strongest truthful argument for this candidate.`;\nreturn $input.all().map(it=>{const j=it.json;\n const user=`USER REQUEST:\\n${cfg.request}\\nPLAN: contract types=${(plan.contract_types||[]).join(', ')}; locations=${(plan.locations||[]).join(', ')}; remote_only=${plan.remote_only}\\n\\nCANDIDATE CV:\\n${cv.slice(0,6000)}\\n\\nJOB:\\nTitle: ${j.title}\\nCompany: ${j.company}\\nLocation: ${j.location}\\nSource: ${j.source}\\nDescription: ${j.description}`;\n return {json:{...j,ollamaBody:{model:cfg.model,stream:false,format:schema,options:{temperature:0.1,num_ctx:8192},messages:[{role:'system',content:system},{role:'user',content:user}]}}};});"
+      },
+      "id": "2d61bb23-7a3f-43e6-998a-65286034efe3",
+      "name": "Match Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3160,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ollamaBody) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "2f6e9c07-5170-44e1-ba19-d5706626cd19",
+      "name": "Ollama: Match",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3400,
+        150
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseLLM(r){let t=(r&&r.message&&r.message.content)||'';t=t.replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();try{return JSON.parse(t);}catch(e){const m=t.match(/\\{[\\s\\S]*\\}/);if(m){try{return JSON.parse(m[0]);}catch(e2){}}return null;}}\nconst cfg=$('Config').first().json;const out=[];\n$input.all().forEach((it,i)=>{\n  const {ollamaBody,description,...job}=$('Match Prompt').itemMatching(i).json;\n  const m=parseLLM(it.json);if(!m||typeof m.score!=='number')return;\n  const ok=m.score>=Number(cfg.minScore)&&m.verdict==='apply';\n  out.push({json:{...job,description:$('Match Prompt').itemMatching(i).json.description,score:m.score,verdict:m.verdict,reasoning:m.reasoning,matched_skills:m.matched_skills||[],missing_skills:m.missing_skills||[],apply_angle:m.apply_angle||'',status:ok?'to_apply':'skipped_low_score'}});\n});\nreturn out;"
+      },
+      "id": "44d698b5-ec3f-43a8-95d5-bcfbb86dd060",
+      "name": "Parse Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3640,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "519953fc-14d9-4d36-97b1-9ee40c883337",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "to_apply",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e311afa6-65ac-43a6-bcff-2831116e0ddd",
+      "name": "Worth Applying?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3880,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const COLS=['job_id','found_at','source','title','company','location','url','apply_email','score','verdict','reasoning','matched_skills','missing_skills','status','cover_letter','letter_check','applied_at','thread_id','last_message_id','follow_up_count','last_contact_at'];\nconst toRow=j=>{const r={};for(const c of COLS){const v=j[c];r[c]=Array.isArray(v)?v.join(', '):(v??'');}return r;};\nreturn $input.all().map(it=>({json:toRow(it.json)}));"
+      },
+      "id": "bfb38302-1e9e-4d3a-bb59-6f97cce3d531",
+      "name": "Row: Skipped",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "maxItems": "={{ $('Config').first().json.maxPerRun }}"
+      },
+      "id": "57fcda25-e583-427a-9af5-8dfe830abcbf",
+      "name": "Limit Applications",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        4120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst cv=$('CV Text').first().json.text||'';\nconst schema={type:'object',properties:{reasoning:{type:'string'},subject:{type:'string'},body:{type:'string'}},required:['reasoning','subject','body']};\nconst system=`You write one job application email for ONE candidate.\nABSOLUTE RULES:\n1. Every statement about the candidate must be directly supported by the CV text. Never invent skills, tools, years of experience, degrees, employers, certifications, projects, metrics, grades or availability dates.\n2. Skills in the MISSING list must not be claimed. Either omit them or say plainly that the candidate is looking to learn them, only if that is natural.\n3. Write in the language of the job posting (French or English).\n4. 170 to 230 words, 3 short paragraphs, professional, specific to this company and role, no cliches, no placeholders, no brackets.\n5. Mention once that the CV is attached.\n6. Sign with the candidate name.\nIn \"reasoning\" list the exact CV facts you used. \"subject\" is a short application subject line containing the job title.`;\nreturn $input.all().map(it=>{const j=it.json;\n const user=`CANDIDATE NAME: ${cfg.candidateName}\\n\\nCV:\\n${cv.slice(0,6000)}\\n\\nJOB:\\nTitle: ${j.title}\\nCompany: ${j.company}\\nLocation: ${j.location}\\nDescription: ${j.description}\\n\\nMATCHED SKILLS: ${(j.matched_skills||[]).join(', ')}\\nMISSING SKILLS (do not claim): ${(j.missing_skills||[]).join(', ')}\\nSTRONGEST TRUTHFUL ANGLE: ${j.apply_angle}`;\n return {json:{...j,ollamaBody:{model:cfg.model,stream:false,format:schema,options:{temperature:0.4,num_ctx:8192},messages:[{role:'system',content:system},{role:'user',content:user}]}}};});"
+      },
+      "id": "f959b772-21a1-446c-afca-2697875c6e4c",
+      "name": "Letter Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ollamaBody) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "2e6e5d70-1f4a-4e67-aaa7-6fa217885045",
+      "name": "Ollama: Letter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4600,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseLLM(r){let t=(r&&r.message&&r.message.content)||'';t=t.replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();try{return JSON.parse(t);}catch(e){const m=t.match(/\\{[\\s\\S]*\\}/);if(m){try{return JSON.parse(m[0]);}catch(e2){}}return null;}}\nconst out=[];\n$input.all().forEach((it,i)=>{const {ollamaBody,...job}=$('Letter Prompt').itemMatching(i).json;\n const l=parseLLM(it.json);if(!l||!l.body||!l.subject)return;\n out.push({json:{...job,subject:l.subject,body:l.body,cover_letter:l.body}});});\nreturn out;"
+      },
+      "id": "fa59f862-add3-432e-b5fe-3de9f29d9872",
+      "name": "Parse Letter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4840,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst cv=$('CV Text').first().json.text||'';\nconst schema={type:'object',properties:{checked_claims:{type:'array',items:{type:'object',properties:{claim:{type:'string'},supported:{type:'boolean'}},required:['claim','supported']}},unsupported_claims:{type:'array',items:{type:'string'}},verdict:{type:'string',enum:['pass','fail']}},required:['checked_claims','unsupported_claims','verdict']};\nconst system=`You are a strict fact checker. Compare a cover letter against the candidate CV. Extract every factual claim the letter makes about the candidate (skills, tools, experience, education, projects, numbers, dates, certifications). For each, decide supported=true only if the CV text clearly supports it. Generic enthusiasm and statements about the company are not claims. verdict is \"pass\" only if unsupported_claims is empty.`;\nreturn $input.all().map(it=>{const j=it.json;\n const user=`CV:\\n${cv.slice(0,6000)}\\n\\nCOVER LETTER:\\n${j.body}`;\n return {json:{...j,ollamaBody:{model:cfg.model,stream:false,format:schema,options:{temperature:0,num_ctx:8192},messages:[{role:'system',content:system},{role:'user',content:user}]}}};});"
+      },
+      "id": "af1935e6-d508-4b45-b90d-66c27a0fa1ec",
+      "name": "Verify Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ollamaBody) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "cff04695-5341-4bac-8e92-2a34ff9e3907",
+      "name": "Ollama: Verify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5320,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseLLM(r){let t=(r&&r.message&&r.message.content)||'';t=t.replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();try{return JSON.parse(t);}catch(e){const m=t.match(/\\{[\\s\\S]*\\}/);if(m){try{return JSON.parse(m[0]);}catch(e2){}}return null;}}\nconst cfg=$('Config').first().json;\nconst cv=$('Read CV').first().binary.cv;\nreturn $input.all().map((it,i)=>{\n const {ollamaBody,description,...j}=$('Verify Prompt').itemMatching(i).json;\n const v=parseLLM(it.json);\n const bad=(v&&Array.isArray(v.unsupported_claims))?v.unsupported_claims:['verification failed'];\n const ok=!!v&&v.verdict==='pass'&&bad.length===0;\n j.letter_check=ok?'pass':('fail: '+bad.join(' | '));\n let route;\n if(!ok){route='review';j.status='needs_review';}\n else if(!j.apply_email){route='review';j.status='manual_apply';}\n else if(cfg.dryRun){route='draft';}\n else{route='send';}\n return {json:{...j,route},binary:{cv:{...cv,fileName:cfg.cvFileName}}};});"
+      },
+      "id": "b6d4ff4f-7dc6-4392-8778-e0ec8251e134",
+      "name": "Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "75efa979-60fa-48b5-820e-5878d9c357dc",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "send",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "send"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "51494963-1865-4e68-bc96-2f9ea6309ce9",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "draft",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "draft"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "868c1466-a41a-43b4-becd-fb20f3d05752",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "review"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dc11d08c-776c-4155-b0b1-28cd1a1a7206",
+      "name": "Send or Draft?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        5800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.apply_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "cv"
+              }
+            ]
+          },
+          "appendAttribution": false
+        }
+      },
+      "id": "b3a699f9-4244-4a34-b030-f4c60af5973e",
+      "name": "Gmail: Send",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        6060,
+        -150
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": null,
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "cv"
+              }
+            ]
+          },
+          "appendAttribution": false,
+          "sendTo": "={{ $json.apply_email }}"
+        }
+      },
+      "id": "e18ed1f3-12a9-4e97-8b9f-8c807907e753",
+      "name": "Gmail: Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        6060,
+        50
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": null,
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const COLS=['job_id','found_at','source','title','company','location','url','apply_email','score','verdict','reasoning','matched_skills','missing_skills','status','cover_letter','letter_check','applied_at','thread_id','last_message_id','follow_up_count','last_contact_at'];\nconst toRow=j=>{const r={};for(const c of COLS){const v=j[c];r[c]=Array.isArray(v)?v.join(', '):(v??'');}return r;};\nreturn $input.all().map((it,i)=>{const {binary,...j}=$('Route').itemMatching(i).json;const now=new Date().toISOString();\n const ok=!!it.json.threadId;\n return {json:toRow({...j,status:ok?'applied':'error',applied_at:ok?now:'',thread_id:it.json.threadId||'',last_message_id:it.json.id||'',follow_up_count:0,last_contact_at:ok?now:''})};});"
+      },
+      "id": "eae1e7b8-e189-4020-a98d-d855997a7925",
+      "name": "Row: Sent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6300,
+        -150
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const COLS=['job_id','found_at','source','title','company','location','url','apply_email','score','verdict','reasoning','matched_skills','missing_skills','status','cover_letter','letter_check','applied_at','thread_id','last_message_id','follow_up_count','last_contact_at'];\nconst toRow=j=>{const r={};for(const c of COLS){const v=j[c];r[c]=Array.isArray(v)?v.join(', '):(v??'');}return r;};\nreturn $input.all().map((it,i)=>{const j=$('Route').itemMatching(i).json;\n const ok=!!(it.json.message&&it.json.message.threadId);\n return {json:toRow({...j,status:ok?'draft_created':'error',thread_id:ok?it.json.message.threadId:''})};});"
+      },
+      "id": "2d5bc46c-9f1e-4efb-ac64-48f4ac7ddcd8",
+      "name": "Row: Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6300,
+        50
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const COLS=['job_id','found_at','source','title','company','location','url','apply_email','score','verdict','reasoning','matched_skills','missing_skills','status','cover_letter','letter_check','applied_at','thread_id','last_message_id','follow_up_count','last_contact_at'];\nconst toRow=j=>{const r={};for(const c of COLS){const v=j[c];r[c]=Array.isArray(v)?v.join(', '):(v??'');}return r;};\nreturn $input.all().map(it=>({json:toRow(it.json)}));"
+      },
+      "id": "84a4582b-536b-4b27-97cf-54f3da760952",
+      "name": "Row: Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6060,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOB_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Applications"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null,
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "3736c277-d3da-4996-a963-1f0ae70a2a30",
+      "name": "Save Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        6560,
+        100
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "4d4e6e4e-c7dc-4a8e-b044-8995d27f5b87",
+      "name": "Called by Master",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Form": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read CV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CV": {
+      "main": [
+        [
+          {
+            "node": "CV Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CV Text": {
+      "main": [
+        [
+          {
+            "node": "Plan Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Plan": {
+      "main": [
+        [
+          {
+            "node": "Parse Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Plan": {
+      "main": [
+        [
+          {
+            "node": "Expand Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Queries": {
+      "main": [
+        [
+          {
+            "node": "Remotive",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RemoteOK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Arbeitnow",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Jooble",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remotive": {
+      "main": [
+        [
+          {
+            "node": "Barrier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RemoteOK": {
+      "main": [
+        [
+          {
+            "node": "Barrier",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Arbeitnow": {
+      "main": [
+        [
+          {
+            "node": "Barrier",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Jooble": {
+      "main": [
+        [
+          {
+            "node": "Barrier",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "Barrier": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Read Applications Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Applications Sheet": {
+      "main": [
+        [
+          {
+            "node": "Filter New",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New": {
+      "main": [
+        [
+          {
+            "node": "Match Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Match": {
+      "main": [
+        [
+          {
+            "node": "Parse Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Match": {
+      "main": [
+        [
+          {
+            "node": "Worth Applying?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worth Applying?": {
+      "main": [
+        [
+          {
+            "node": "Limit Applications",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Row: Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit Applications": {
+      "main": [
+        [
+          {
+            "node": "Letter Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Letter Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Letter": {
+      "main": [
+        [
+          {
+            "node": "Parse Letter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Letter": {
+      "main": [
+        [
+          {
+            "node": "Verify Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Verify": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Send or Draft?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send or Draft?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Row: Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Send": {
+      "main": [
+        [
+          {
+            "node": "Row: Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Draft": {
+      "main": [
+        [
+          {
+            "node": "Row: Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Skipped": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Sent": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Draft": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Review": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Called by Master": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Tunis"
+  },
+  "pinData": {},
+  "id": "JobSearchApply01"
+}

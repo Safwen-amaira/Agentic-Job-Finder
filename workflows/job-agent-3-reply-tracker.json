@@ -1,0 +1,1124 @@
+{
+  "name": "Job Agent 3 - Reply Tracker and Follow-ups",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "de6b1c3d-a76c-4b3e-876d-6b6a8412b6ea",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "d8cb76fd-20d3-43f7-899d-d9a98148f012",
+      "name": "Run Now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "6afacbf4-e252-49cb-a5f9-7b5d49a13311",
+      "name": "Called by Master",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bec70d4d-7e67-4f79-8039-67833d2291ee",
+              "name": "ollamaUrl",
+              "value": "={{ $env.OLLAMA_URL || 'http://joby-ollama:11434' }}",
+              "type": "string"
+            },
+            {
+              "id": "df494f16-7b8c-4194-9cb3-c4d72d70746b",
+              "name": "model",
+              "value": "={{ $env.OLLAMA_MODEL || 'qwen2.5:7b-instruct' }}",
+              "type": "string"
+            },
+            {
+              "id": "67681b41-8e45-4f48-bca5-b8b9e172b62e",
+              "name": "candidateName",
+              "value": "={{ $env.CANDIDATE_NAME || 'YOUR FULL NAME' }}",
+              "type": "string"
+            },
+            {
+              "id": "a59e9f3d-562c-4c51-8898-cd1e7e1d80f6",
+              "name": "myEmail",
+              "value": "={{ $env.NOTIFY_EMAIL || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "5ad9c1f6-f7a9-4a83-b8e1-23fbafadff6a",
+              "name": "followUpDays",
+              "value": 7,
+              "type": "number"
+            },
+            {
+              "id": "1eeee9af-69dc-49a9-b118-af11742e2e0f",
+              "name": "maxFollowUps",
+              "value": 2,
+              "type": "number"
+            },
+            {
+              "id": "f494be0e-be31-42d7-a252-a00c11c01c0c",
+              "name": "maxSendsPerRun",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "0aee0eaa-d76f-4c59-a4b1-09472b61356e",
+              "name": "skipWeekends",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "cb9a74d0-2fde-4dc8-90a3-e9ea5e2257ad",
+              "name": "dryRun",
+              "value": "={{ $env.DRY_RUN !== 'false' }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a34326fa-3911-4240-8d97-9b0b3a13f974",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOB_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Applications"
+        },
+        "options": {}
+      },
+      "id": "f6716f6c-33db-4ed3-8cb8-ed328289d577",
+      "name": "Read Applications Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        480,
+        160
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const ok=['applied','acknowledged'];\nreturn $input.all().filter(it=>ok.includes(String(it.json.status||'').trim())&&it.json.thread_id).map(it=>{const r=it.json;\n return {json:{job_id:r.job_id,title:r.title,company:r.company,status:String(r.status).trim(),apply_email:r.apply_email,thread_id:r.thread_id,\n  applied_at:r.applied_at,last_contact_at:r.last_contact_at,follow_up_count:Number(r.follow_up_count||0),last_incoming_id:r.last_incoming_id||'',cover_letter:r.cover_letter||''}};});"
+      },
+      "id": "a52b4652-3def-47fd-9222-21a185cd1002",
+      "name": "Pending",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "get",
+        "threadId": "={{ $json.thread_id }}",
+        "simple": false,
+        "options": {}
+      },
+      "id": "af0f0ae4-6682-48d6-81a6-26418e740f1b",
+      "name": "Gmail: Get Thread",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        960,
+        160
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": null,
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b64=s=>Buffer.from(String(s||'').replace(/-/g,'+').replace(/_/g,'/'),'base64').toString('utf8');\nconst walk=(p,t)=>{if(!p)return '';if(p.mimeType===t&&p.body&&p.body.data)return b64(p.body.data);for(const c of (p.parts||[])){const r=walk(c,t);if(r)return r;}return '';};\nconst hdr=(m,n)=>{const h=((m.payload&&m.payload.headers)||[]).find(x=>String(x.name).toLowerCase()===n);return h?h.value:'';};\nconst bodyOf=m=>{let t=walk(m.payload,'text/plain');\n if(!t){t=walk(m.payload,'text/html').replace(/<style[\\s\\S]*?<\\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&');}\n if(!t)t=m.snippet||'';\n t=t.replace(/\\r/g,'');\n const cut=t.search(/\\n\\s*(On .{5,90} wrote:|Le .{5,90} a écrit|-----Original Message-----|De ?:\\s.+\\nEnvoy)/);\n if(cut>0)t=t.slice(0,cut);\n t=t.split('\\n').filter(l=>!l.trim().startsWith('>')).join('\\n');\n return t.replace(/[ \\t]+/g,' ').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,1800);};\nreturn $input.all().map((it,i)=>{\n const r=$('Pending').itemMatching(i).json;\n const msgs=it.json.messages||[];\n if(it.json.error||!msgs.length)return {json:{...r,route:'skip'}};\n const mine=m=>(m.labelIds||[]).includes('SENT');\n const isBounce=m=>!mine(m)&&/mailer-daemon|postmaster/i.test(hdr(m,'from'));\n const incoming=msgs.filter(m=>!mine(m)&&!isBounce(m));\n const last=msgs[msgs.length-1];const li=incoming[incoming.length-1];\n const base={...r,thread_last_id:last.id,last_is_mine:mine(last)};\n if(msgs.some(isBounce))return {json:{...base,route:'bounced'}};\n if(li&&li.id!==r.last_incoming_id)return {json:{...base,route:'classify',incoming_id:li.id,incoming_from:hdr(li,'from'),incoming_subject:hdr(li,'subject'),incoming_text:bodyOf(li)}};\n return {json:{...base,route:'wait'}};});"
+      },
+      "id": "ab51d56d-5630-4dd5-a493-bd2ed0684ad9",
+      "name": "Analyze Thread",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "68338a77-60d8-4967-80db-d103c0a19dad",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "classify",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "classify"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "a911faf1-95cb-421c-bae9-90282a414959",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "bounced",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "bounced"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "3c5a5b13-0817-4810-b3c7-fb7fde544b08",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "wait",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "wait"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4675e923-f1a7-42ae-a9b9-b743d1842a84",
+      "name": "Thread Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1440,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst schema={type:'object',properties:{reasoning:{type:'string'},\n category:{type:'string',enum:['accepted','interview_request','rejected','info_request','acknowledgment','auto_reply','other']},\n confidence:{type:'integer'},summary:{type:'string'},deadline:{type:'string'}},\n required:['reasoning','category','confidence','summary','deadline']};\nconst system=`You classify ONE email received after a job application. Think step by step in \"reasoning\": who is the sender (a human recruiter or an automated system), what is the explicit message, are there decision words (English, French or Arabic: \"unfortunately\", \"regret\", \"not selected\", \"malheureusement\", \"nous avons le plaisir\", \"convocation\", \"entretien\", \"interview\", \"offer\", \"offre\", \"next steps\").\nCategories:\n- accepted: a job or internship offer, or an explicit selection / acceptance.\n- interview_request: invitation to an interview, test, call or meeting, or a request to propose availability.\n- rejected: clear refusal, position filled, not selected.\n- info_request: asks the candidate for documents, answers or details, but is neither an offer nor a rejection.\n- acknowledgment: a human or system confirms reception and says they will come back, no decision.\n- auto_reply: out-of-office or no-reply autoresponder with no real content.\n- other: anything else or unclear.\nconfidence 0-100. summary: one short sentence in English. deadline: any date, time or deadline stated in the email, else an empty string. Never guess a decision that the email does not state.`;\nreturn $input.all().map(it=>{const j=it.json;\n const user=`JOB: ${j.title} at ${j.company}\\nFROM: ${j.incoming_from}\\nSUBJECT: ${j.incoming_subject}\\n\\nEMAIL:\\n${j.incoming_text}`;\n return {json:{...j,ollamaBody:{model:cfg.model,stream:false,format:schema,options:{temperature:0,num_ctx:4096},messages:[{role:'system',content:system},{role:'user',content:user}]}}};});"
+      },
+      "id": "ae9d48b4-b53a-4fc5-81f5-93dc17517084",
+      "name": "Classify Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ollamaBody) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "f528d2d6-8088-403a-ace0-6fe1a4d13b8c",
+      "name": "Ollama: Classify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1940,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseLLM(r){let t=(r&&r.message&&r.message.content)||'';t=t.replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();try{return JSON.parse(t);}catch(e){const m=t.match(/\\{[\\s\\S]*\\}/);if(m){try{return JSON.parse(m[0]);}catch(e2){}}return null;}}\nconst map={accepted:'accepted',interview_request:'interview',rejected:'rejected',info_request:'action_needed',acknowledgment:'acknowledged',other:'action_needed'};\nconst now=new Date().toISOString();\nreturn $input.all().map((it,i)=>{const {ollamaBody,incoming_text,...j}=$('Classify Prompt').itemMatching(i).json;\n const c=parseLLM(it.json);\n let cat=c&&c.category?c.category:'other';\n if(!c||Number(c.confidence)<60)cat=cat==='auto_reply'?'auto_reply':'other';\n const summary=(c&&c.summary)||'Could not classify, read the email';\n const deadline=(c&&c.deadline)?(' | '+c.deadline):'';\n const auto=cat==='auto_reply';\n return {json:{...j,category:cat,is_auto:auto,new_status:auto?j.status:map[cat],response_summary:(cat==='other'?'[unsure] ':'')+summary+deadline,classified_at:now}};});"
+      },
+      "id": "3bf129c5-612a-4cd7-aeeb-bce7f1125193",
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6ac169d3-ffb8-4c5f-a714-296435ac7940",
+              "leftValue": "={{ String($json.is_auto) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "19184174-6537-4287-b4f5-56501f6eac8b",
+      "name": "Auto Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rowOf=o=>{const r={};for(const k in o){const v=o[k];if(v!==undefined&&v!==null)r[k]=Array.isArray(v)?v.join(', '):v;}return r;};\nconst now=new Date().toISOString();\nreturn $input.all().map(it=>{const j=it.json;\n return {json:rowOf({job_id:j.job_id,status:j.new_status,response_summary:j.response_summary,last_incoming_id:j.incoming_id,last_contact_at:now,last_message_id:j.thread_last_id,last_checked_at:now})};});"
+      },
+      "id": "356f87a6-332d-48b2-8c06-426eec943795",
+      "name": "Row: Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst label={accepted:'ACCEPTED',interview:'INTERVIEW',rejected:'Rejected',action_needed:'ACTION NEEDED'};\nconst items=$input.all().map(i=>i.json);\nif(!items.length)return [];\nconst order=['accepted','interview','action_needed','rejected'];\nitems.sort((a,b)=>order.indexOf(a.new_status)-order.indexOf(b.new_status));\nconst lines=items.map(j=>`[${label[j.new_status]||j.new_status}] ${j.title} at ${j.company}\\n  ${j.response_summary}\\n  From: ${j.incoming_from}`);\nconst urgent=items.filter(j=>['accepted','interview','action_needed'].includes(j.new_status)).length;\nreturn [{json:{to:cfg.myEmail,subject:`Job Agent: ${items.length} new response(s)${urgent?`, ${urgent} need you`:''}`,body:lines.join('\\n\\n')+'\\n\\nThe sheet has been updated.'}}];"
+      },
+      "id": "787f5ee3-28fb-49b5-ae56-cab5ce4b701c",
+      "name": "Alert Digest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2660,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "5b9cae2b-4d01-4fa7-8207-bd482eadf0be",
+      "name": "Gmail: Send Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2900,
+        320
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": null,
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rowOf=o=>{const r={};for(const k in o){const v=o[k];if(v!==undefined&&v!==null)r[k]=Array.isArray(v)?v.join(', '):v;}return r;};\nconst now=new Date().toISOString();\nreturn $input.all().map(it=>({json:rowOf({job_id:it.json.job_id,status:'bounced',response_summary:'Delivery failed, the address does not work. Apply on the website.',last_checked_at:now})}));"
+      },
+      "id": "01aee804-8b3d-451a-bc7a-d0bd51da014c",
+      "name": "Row: Bounced",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1700,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst now=Date.now();const dow=new Date().getDay();const weekend=dow===0||dow===6;\nconst d=Number(cfg.followUpDays),maxF=Number(cfg.maxFollowUps);\nreturn $input.all().map(it=>{const r=it.json;\n const last=Date.parse(r.last_contact_at||r.applied_at)||now;\n const days=Math.floor((now-last)/86400000);\n const wait=r.status==='acknowledged'?d*2:d;\n const n=Number(r.follow_up_count||0);\n const remember=r.incoming_id||'';\n let route='none';\n if(days>=wait){\n   if(n>=maxF)route='close';\n   else if(!(weekend&&cfg.skipWeekends))route='followup';\n   else if(remember)route='remember';\n }else if(remember)route='remember';\n return {json:{...r,days_since:days,remember_id:remember,route}};});"
+      },
+      "id": "8efb808c-9a6f-474c-8d97-97a45c51fc5e",
+      "name": "Follow-up Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2420,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "ded0ec80-5c94-4435-a8ce-b16310c874c5",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "followup",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "followup"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e8ef31e2-e495-4aee-9ead-8c2112d977ca",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "close",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "close"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "0ad298b8-4386-4f94-8b5a-81dfe1489587",
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "remember",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renamedOutput": true,
+              "outputKey": "remember"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c74d521b-a5f2-4ed9-a9da-fc5f0fb73e3b",
+      "name": "Decision Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2660,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rowOf=o=>{const r={};for(const k in o){const v=o[k];if(v!==undefined&&v!==null)r[k]=Array.isArray(v)?v.join(', '):v;}return r;};\nconst now=new Date().toISOString();\nreturn $input.all().map(it=>({json:rowOf({job_id:it.json.job_id,last_incoming_id:it.json.remember_id,last_checked_at:now})}));"
+      },
+      "id": "dc6fbbcf-bf03-4c89-84ce-30f8b038d16e",
+      "name": "Row: Remember",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        760
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rowOf=o=>{const r={};for(const k in o){const v=o[k];if(v!==undefined&&v!==null)r[k]=Array.isArray(v)?v.join(', '):v;}return r;};\nconst now=new Date().toISOString();\nreturn $input.all().map(it=>{const j=it.json;return {json:rowOf({job_id:j.job_id,status:'closed_no_reply',response_summary:`No reply after ${j.follow_up_count} follow-up(s) and ${j.days_since} days`,last_incoming_id:j.remember_id||undefined,last_checked_at:now})};});"
+      },
+      "id": "46656c1c-69a4-444c-9c05-d6497af412b1",
+      "name": "Row: Closed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "maxItems": "={{ $('Config').first().json.maxSendsPerRun }}"
+      },
+      "id": "a1bfc3a4-444a-4009-8c75-85f7731bcee2",
+      "name": "Limit Sends",
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        2900,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg=$('Config').first().json;\nconst schema={type:'object',properties:{reasoning:{type:'string'},body:{type:'string'}},required:['reasoning','body']};\nconst system=`You write one short follow-up email for a job application that got no answer. Rules:\n- Same language as the original application email.\n- 50 to 90 words, polite, calm, never pushy, no guilt, no placeholders.\n- Mention the job title, say the application was sent ${'${'}days${'}'} days ago in a natural way, restate interest in one sentence, ask if there is any update or anything else needed.\n- Do NOT add any new claim about the candidate: no new skills, tools, experience or achievements. Only what the original email already says.\n- Follow-up 1: friendly check-in. Follow-up 2 (final): even shorter, say you understand if the position is already filled and that you remain interested for future openings.\n- Sign with the candidate name. Return only the email body, no subject.`;\nreturn $input.all().map(it=>{const j=it.json;const num=Number(j.follow_up_count)+1;\n const user=`CANDIDATE NAME: ${cfg.candidateName}\\nJOB TITLE: ${j.title}\\nCOMPANY: ${j.company}\\nFOLLOW-UP NUMBER: ${num} of ${cfg.maxFollowUps}\\nDAYS SINCE LAST EMAIL: ${j.days_since}\\n\\nORIGINAL APPLICATION EMAIL:\\n${(j.cover_letter||'').slice(0,2500)}`;\n return {json:{...j,ollamaBody:{model:cfg.model,stream:false,format:schema,options:{temperature:0.3,num_ctx:4096},messages:[{role:'system',content:system.replace('${days}',String(j.days_since))},{role:'user',content:user}]}}};});"
+      },
+      "id": "88fa444b-6153-4822-88c2-deab6f282f89",
+      "name": "Follow-up Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3140,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.ollamaUrl }}/api/chat",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ollamaBody) }}",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "948b93bc-153b-4703-99e7-835565b8599a",
+      "name": "Ollama: Follow-up",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3380,
+        440
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "function parseLLM(r){let t=(r&&r.message&&r.message.content)||'';t=t.replace(/^\\s*```(?:json)?/i,'').replace(/```\\s*$/,'').trim();try{return JSON.parse(t);}catch(e){const m=t.match(/\\{[\\s\\S]*\\}/);if(m){try{return JSON.parse(m[0]);}catch(e2){}}return null;}}\nconst out=[];\n$input.all().forEach((it,i)=>{const {ollamaBody,...j}=$('Follow-up Prompt').itemMatching(i).json;\n const m=parseLLM(it.json);if(!m||!m.body||m.body.length<30)return;out.push({json:{...j,fu_body:m.body}});});\nreturn out;"
+      },
+      "id": "d28c4a58-f63f-4788-825f-f28c84e7d528",
+      "name": "Parse Follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3620,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "696a05ef-790b-4524-8217-e6daf9fba60b",
+              "leftValue": "={{ String($('Config').first().json.dryRun) }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "87361444-bf7e-43ce-8ae7-d22676bf8a2f",
+      "name": "Dry Run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3860,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "operation": "create",
+        "subject": "={{ 'Re: ' + $json.title }}",
+        "emailType": "text",
+        "message": "={{ $json.fu_body }}",
+        "options": {
+          "threadId": "={{ $json.thread_id }}",
+          "sendTo": "={{ $json.apply_email }}"
+        }
+      },
+      "id": "cde847c1-af3f-422c-8d7f-79dc5d08b0ba",
+      "name": "Gmail: Draft Follow-up",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4100,
+        340
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": null,
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "reply",
+        "threadId": "={{ $json.thread_id }}",
+        "messageId": "={{ $json.thread_last_id }}",
+        "emailType": "text",
+        "message": "={{ $json.fu_body }}",
+        "options": {
+          "appendAttribution": false,
+          "replyToRecipientsOnly": "={{ $json.last_is_mine }}",
+          "replyToSenderOnly": "={{ !$json.last_is_mine }}"
+        }
+      },
+      "id": "cfeccad4-d900-4e2a-b4ee-bef6502dab2a",
+      "name": "Gmail: Reply Follow-up",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4100,
+        540
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": null,
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const rowOf=o=>{const r={};for(const k in o){const v=o[k];if(v!==undefined&&v!==null)r[k]=Array.isArray(v)?v.join(', '):v;}return r;};\nconst now=new Date().toISOString();const out=[];\n$input.all().forEach((it,i)=>{const j=$('Parse Follow-up').itemMatching(i).json;\n if(it.json.error||!it.json.id)return;\n out.push({json:rowOf({job_id:j.job_id,follow_up_count:Number(j.follow_up_count)+1,last_contact_at:now,last_message_id:it.json.id,last_incoming_id:j.remember_id||undefined,last_checked_at:now})});});\nreturn out;"
+      },
+      "id": "466d961c-0ae4-43e5-bdc9-a77d4c98f237",
+      "name": "Row: Followed Up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4340,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "sheet",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOB_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Applications"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null,
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "34263323-8ec1-42b8-9ea3-3f1f508297d5",
+      "name": "Save Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        4600,
+        300
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": null,
+          "name": "Google Sheets account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Now": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Called by Master": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Read Applications Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Applications Sheet": {
+      "main": [
+        [
+          {
+            "node": "Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pending": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Get Thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Get Thread": {
+      "main": [
+        [
+          {
+            "node": "Analyze Thread",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Thread": {
+      "main": [
+        [
+          {
+            "node": "Thread Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thread Route": {
+      "main": [
+        [
+          {
+            "node": "Classify Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Row: Bounced",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Follow-up Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Classify": {
+      "main": [
+        [
+          {
+            "node": "Parse Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Classification": {
+      "main": [
+        [
+          {
+            "node": "Auto Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto Reply?": {
+      "main": [
+        [
+          {
+            "node": "Follow-up Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Row: Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Digest": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Follow-up Decision": {
+      "main": [
+        [
+          {
+            "node": "Decision Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decision Route": {
+      "main": [
+        [
+          {
+            "node": "Limit Sends",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Row: Closed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Row: Remember",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit Sends": {
+      "main": [
+        [
+          {
+            "node": "Follow-up Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Follow-up Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama: Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama: Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Parse Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Dry Run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dry Run?": {
+      "main": [
+        [
+          {
+            "node": "Gmail: Draft Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail: Reply Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail: Reply Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Row: Followed Up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Bounced": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Response": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Remember": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Closed": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Row: Followed Up": {
+      "main": [
+        [
+          {
+            "node": "Save Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Tunis"
+  },
+  "pinData": {},
+  "id": "JobTracker000003"
+}
