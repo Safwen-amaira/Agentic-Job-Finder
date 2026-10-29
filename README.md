@@ -123,7 +123,3 @@ This reduces the risk. It does not remove it. A small local model can still miss
 - The services bind to `127.0.0.1` only. Do not expose n8n to the internet without authentication and HTTPS.
 - Google apps in Testing mode expire the login every 7 days. Publish the app (for personal use) to avoid re-signing in.
 - Emails are sent from your own account. You are responsible for what is sent, so keep the volume low and the review step on.
-
-## License
-
-Add your license here.
